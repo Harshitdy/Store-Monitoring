@@ -14,7 +14,7 @@ def create_connection():
     return cursor
 
 
-def give_result(query: str):
+def fetch_result(query: str):
     cursor = create_connection()
     cursor.execute(query)
     return cursor.fetchone()
@@ -22,6 +22,6 @@ def give_result(query: str):
 
 
 if __name__ == "__main__":
-    result = give_result("select * from store_status")
+    result = fetch_result("select * from store_status")
     print(result)
 
