@@ -1,20 +1,27 @@
 import psycopg2
 import uuid
 import time
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from urllib.parse import quote_plus
+from sqlalchemy import text
 import asyncio
-import csv
 from dotenv import load_dotenv
+import pandas as pd
+from io import StringIO
 import uvicorn
 import os
+from sqlalchemy import create_engine
+
+database = os.getenv('DatabaseName')
+username = os.getenv("UserName")
+password = os.getenv("Password")
+
+engine = create_engine(f"postgresql+psycopg2://{username}:%s@localhost/{database}" % quote_plus(f"{password}"))
 
 tasks = {}
 
 load_dotenv()
 
-database = os.getenv('DatabaseName')
-username = os.getenv("UserName")
-password = os.getenv("Password")
 
 # Connect to the PostgreSQL database
 def create_conn():
@@ -100,7 +107,7 @@ async def start_task():
 
 # Define the endpoint to get the task status
 @app.get("/get_report/{report_id}")
-async def get_task_status(report_id: str):
+async def get_task_status(report_id: str, response: Response):
     # Connect to the PostgreSQL database
     conn = create_conn()
 
@@ -128,21 +135,19 @@ async def get_task_status(report_id: str):
     # If the task is completed, retrieve the result from the dictionary
     if status == "completed":
 
-        # Retrieve the result of the task from the dictionary
-        result = tasks[report_id].result()
-
-        # # Update the status of the task in the database
-        # cur.execute("UPDATE reports_db SET status = %s WHERE report_id = %s", ("completed", report_id))
-
-        # # Commit the transaction
-        # conn.commit()
-
-        # # Close the cursor and connection
-        # cur.close()
-        # conn.close()
-
-        # Return the status and result of the task
-        return {"status": "completed", "result": result}
+        with engine.connect() as connection:
+            result = connection.execute(text("SELECT * FROM store_business_hours LIMIT 10"))
+            # Create a CSV file
+            csv_string = StringIO()
+            headers = [column[0] for column in result.cursor.description]
+            csv_string.write(','.join(headers) + '\n')
+            for row in result:
+                csv_string.write(','.join(str(value) for value in row) + '\n')
+            # Set the content type and disposition headers to trigger the download
+            response.headers["Content-Type"] = "text/csv"
+            response.headers["Content-Disposition"] = f"attachment; filename=results_{report_id}.csv"
+            # Return the CSV file as a response
+            return Response(content=csv_string.getvalue(), media_type="text/csv")
 
 if __name__ == "__main__":
     uvicorn.run("test:app", host="0.0.0.0", port=8000, reload=True)
